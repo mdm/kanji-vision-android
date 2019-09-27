@@ -1,4 +1,4 @@
-package io.migge.kanjivision
+package io.migge.kanjijoshu
 
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle

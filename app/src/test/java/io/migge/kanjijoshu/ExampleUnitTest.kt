@@ -1,4 +1,4 @@
-package io.migge.kanjivision
+package io.migge.kanjijoshu
 
 import org.junit.Test
 
