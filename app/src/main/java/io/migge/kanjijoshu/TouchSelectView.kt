@@ -15,14 +15,16 @@ import org.json.JSONObject
  * A custom image view where words can be marked by touch
  */
 class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, attrs) {
-    private val bitmap: Bitmap
-    private val dstRect = Rect()
+    private val image: Bitmap
     private val boundingBoxes = ArrayList<Path>()
+
+    private lateinit var imageWithBoundingBoxes: Bitmap
+    private var toSourceSpace = Matrix()
     private var highlight: Path? = null
 
     init {
         val bitmapInputStream = context.assets.open("20181212_191644_smallest.jpg")
-        bitmap = BitmapFactory.decodeStream(bitmapInputStream)
+        image = BitmapFactory.decodeStream(bitmapInputStream)
 
         val jsonInputStream = context.assets.open("output_pretty.json")
         val size = jsonInputStream.available()
@@ -86,23 +88,7 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        canvas.getClipBounds(dstRect)
-        canvas.drawBitmap(bitmap, null, dstRect, null)
-
-        val scaleX = 1.0f * (dstRect.right - dstRect.left) / bitmap.width
-        val scaleY = 1.0f * (dstRect.bottom - dstRect.top) / bitmap.height
-        val matrix = Matrix()
-        matrix.setScale(scaleX, scaleY)
-
-        val boundingBoxPaint = Paint()
-        boundingBoxPaint.style = Paint.Style.STROKE
-        boundingBoxPaint.color = Color.RED
-        boundingBoxPaint.strokeWidth = 5.0f
-        for (boundingBox in boundingBoxes) {
-            val transformed = Path(boundingBox)
-            transformed.transform(matrix)
-            canvas.drawPath(transformed, boundingBoxPaint)
-        }
+        canvas.drawBitmap(imageWithBoundingBoxes, 0.0f, 0.0f, null)
 
         if (highlight != null) {
             val highlightPaint = Paint()
@@ -134,5 +120,29 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
 
         invalidate()
         return true
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        imageWithBoundingBoxes = Bitmap.createScaledBitmap(image, w, h, true)
+
+        toSourceSpace.setScale(1.0f * image.width / w, 1.0f * image.height / h)
+
+        val toDestinationSpace = Matrix()
+        toDestinationSpace.setScale(1.0f * w / image.width, 1.0f * h / image.height)
+
+        val boundingBoxPaint = Paint()
+        boundingBoxPaint.style = Paint.Style.STROKE
+        boundingBoxPaint.color = Color.RED
+        boundingBoxPaint.strokeWidth = 5.0f
+
+        val canvas = Canvas(imageWithBoundingBoxes)
+
+        for (boundingBox in boundingBoxes) {
+            val transformed = Path(boundingBox)
+            transformed.transform(toDestinationSpace)
+            canvas.drawPath(transformed, boundingBoxPaint)
+        }
+
+        super.onSizeChanged(w, h, oldw, oldh)
     }
 }
