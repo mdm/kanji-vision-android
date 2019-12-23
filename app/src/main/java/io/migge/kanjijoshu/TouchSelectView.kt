@@ -17,6 +17,7 @@ import org.json.JSONObject
 class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private val image: Bitmap
     private val boundingBoxes = ArrayList<Path>()
+    private val highlightPaint = Paint()
 
     private lateinit var imageWithBoundingBoxes: Bitmap
     private var toSourceSpace = Matrix()
@@ -83,6 +84,12 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
                 }
             }
         }
+
+        highlightPaint.style = Paint.Style.STROKE
+        highlightPaint.color = Color.WHITE
+        highlightPaint.strokeWidth = 50.0f
+        highlightPaint.strokeJoin = Paint.Join.ROUND
+        highlightPaint.strokeCap = Paint.Cap.ROUND
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -91,12 +98,6 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
         canvas.drawBitmap(imageWithBoundingBoxes, 0.0f, 0.0f, null)
 
         if (highlight != null) {
-            val highlightPaint = Paint()
-            highlightPaint.style = Paint.Style.STROKE
-            highlightPaint.color = Color.WHITE
-            highlightPaint.strokeWidth = 50.0f
-            highlightPaint.strokeJoin = Paint.Join.ROUND
-            highlightPaint.strokeCap = Paint.Cap.ROUND
             canvas.drawPath(highlight!!, highlightPaint)
         }
     }
