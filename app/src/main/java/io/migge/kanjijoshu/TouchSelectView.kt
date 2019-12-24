@@ -1,6 +1,7 @@
 package io.migge.kanjijoshu
 
 import android.content.Context
+import android.gesture.OrientedBoundingBox
 import android.graphics.*
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
@@ -9,15 +10,99 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import io.migge.kanjijoshu.R
+import org.json.JSONException
 import org.json.JSONObject
+
+data class OCRArtifact(
+    val text: String,
+    val path: Path,
+    val boundingBox: RectF,
+    val children: ArrayList<OCRArtifact>
+)
+
+fun safeGetInt(jsonObject: JSONObject, name: String): Int {
+    return try {
+        jsonObject.getInt(name)
+    } catch (e: JSONException) {
+        0
+    }
+}
+
+fun artifactFromJSONObject(jsonObject: JSONObject, children: ArrayList<OCRArtifact>): OCRArtifact {
+    val text: String
+    if (children.isEmpty()) {
+        text = jsonObject.getString("text")
+    } else {
+        text = children.map { it.text }.joinToString()
+    }
+
+
+    val verticesArray = jsonObject
+        .getJSONObject("boundingBox")
+        .getJSONArray("vertices")
+
+
+    val path = Path()
+
+    val firstVertexObject = verticesArray.getJSONObject(0)
+    path.moveTo(
+        1.0f * safeGetInt(firstVertexObject, "x"),
+        1.0f * safeGetInt(firstVertexObject, "y")
+    )
+    for (vertex in 1 until verticesArray.length()) {
+        val vertexObject = verticesArray.getJSONObject(vertex)
+        path.lineTo(
+            1.0f * safeGetInt(vertexObject, "x"),
+            1.0f * safeGetInt(vertexObject, "y")
+        )
+    }
+
+    path.lineTo(
+        1.0f * safeGetInt(firstVertexObject, "x"),
+        1.0f * safeGetInt(firstVertexObject, "y")
+    )
+
+    var minX = Int.MAX_VALUE
+    var minY = Int.MAX_VALUE
+    var maxX = 0
+    var maxY = 0
+    for (vertex in 0 until verticesArray.length()) {
+        val vertexObject = verticesArray.getJSONObject(vertex)
+        val x = safeGetInt(vertexObject, "x")
+        val y = safeGetInt(vertexObject, "y")
+
+        if (x < minX) {
+            minX = x
+        }
+
+        if (y < minY) {
+            minY = y
+        }
+
+        if (x > maxX) {
+            maxX = x
+        }
+
+        if (y > maxY) {
+            maxY = y
+        }
+    }
+
+    val boundingBox = RectF(1.0f * minX, 1.0f * minY, 1.0f * maxX, 1.0f * maxY)
+
+    return OCRArtifact(text, path, boundingBox, children)
+}
+
 
 /**
  * A custom image view where words can be marked by touch
  */
 class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private val image: Bitmap
-    private val boundingBoxes = ArrayList<Path>()
+    private val artifacts = ArrayList<OCRArtifact>()
+    private val artifactPaint = Paint()
     private val highlightPaint = Paint()
+    private val highlightStrokeWidth = 50.0f
 
     private lateinit var imageWithBoundingBoxes: Bitmap
     private var toSourceSpace = Matrix()
@@ -55,30 +140,24 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
                             .getJSONArray("words")
 
                         for (word in 0 until wordsArray.length()) {
-                            val verticesArray = wordsArray.getJSONObject(word)
-                                .getJSONObject("boundingBox")
-                                .getJSONArray("vertices")
-
-                            val path = Path()
-
-                            val firstVertexObject = verticesArray.getJSONObject(0)
-                            path.moveTo(
-                                1.0f * firstVertexObject.getInt("x"),
-                                1.0f * firstVertexObject.getInt("y")
+                            Log.d(
+                                "WORD",
+                                block.toString() + " " + paragraph.toString() + " " + word.toString()
                             )
-                            for (vertex in 1 until verticesArray.length()) {
-                                val vertexObject = verticesArray.getJSONObject(vertex)
-                                path.lineTo(
-                                    1.0f * vertexObject.getInt("x"),
-                                    1.0f * vertexObject.getInt("y")
-                                )
+                            val wordObject = wordsArray.getJSONObject(word)
+
+                            val children = ArrayList<OCRArtifact>()
+
+                            val symbolsArray = wordObject
+                                .getJSONArray("symbols")
+
+                            for (symbol in 0 until symbolsArray.length()) {
+                                Log.d("SYMBOL", symbol.toString())
+                                val symbolObject = symbolsArray.getJSONObject(symbol)
+                                children.add(artifactFromJSONObject(symbolObject, ArrayList()))
                             }
 
-                            path.lineTo(
-                                1.0f * firstVertexObject.getInt("x"),
-                                1.0f * firstVertexObject.getInt("y")
-                            )
-                            boundingBoxes.add(path)
+                            artifacts.add(artifactFromJSONObject(wordObject, children))
                         }
                     }
                 }
@@ -87,9 +166,13 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
 
         highlightPaint.style = Paint.Style.STROKE
         highlightPaint.color = Color.WHITE
-        highlightPaint.strokeWidth = 50.0f
+        highlightPaint.strokeWidth = highlightStrokeWidth
         highlightPaint.strokeJoin = Paint.Join.ROUND
         highlightPaint.strokeCap = Paint.Cap.ROUND
+
+        artifactPaint.style = Paint.Style.STROKE
+        artifactPaint.color = Color.RED
+        artifactPaint.strokeWidth = 5.0f
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -131,17 +214,12 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
         val toDestinationSpace = Matrix()
         toDestinationSpace.setScale(1.0f * w / image.width, 1.0f * h / image.height)
 
-        val boundingBoxPaint = Paint()
-        boundingBoxPaint.style = Paint.Style.STROKE
-        boundingBoxPaint.color = Color.RED
-        boundingBoxPaint.strokeWidth = 5.0f
-
         val canvas = Canvas(imageWithBoundingBoxes)
 
-        for (boundingBox in boundingBoxes) {
-            val transformed = Path(boundingBox)
+        for (artifact in artifacts) {
+            val transformed = Path(artifact.path)
             transformed.transform(toDestinationSpace)
-            canvas.drawPath(transformed, boundingBoxPaint)
+            canvas.drawPath(transformed, artifactPaint)
         }
 
         super.onSizeChanged(w, h, oldw, oldh)
