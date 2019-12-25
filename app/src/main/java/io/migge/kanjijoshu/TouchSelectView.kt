@@ -101,6 +101,7 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
     private val image: Bitmap
     private val artifacts = ArrayList<OCRArtifact>()
     private val artifactPaint = Paint()
+    private val backdropPaint = Paint()
     private val highlightPaint = Paint()
     private val highlightStrokeWidth = 50.0f
 
@@ -165,7 +166,7 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
         }
 
         highlightPaint.style = Paint.Style.STROKE
-        highlightPaint.color = Color.WHITE
+        highlightPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
         highlightPaint.strokeWidth = highlightStrokeWidth
         highlightPaint.strokeJoin = Paint.Join.ROUND
         highlightPaint.strokeCap = Paint.Cap.ROUND
@@ -173,15 +174,36 @@ class TouchSelectView(context: Context, attrs: AttributeSet) : View(context, att
         artifactPaint.style = Paint.Style.STROKE
         artifactPaint.color = Color.RED
         artifactPaint.strokeWidth = 5.0f
+
+        backdropPaint.color = Color.BLACK
+        backdropPaint.alpha = 120
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        canvas.drawBitmap(imageWithBoundingBoxes, 0.0f, 0.0f, null)
+        if (highlight == null) {
+            canvas.drawBitmap(imageWithBoundingBoxes, 0.0f, 0.0f, null)
+        } else {
+            canvas.drawBitmap(imageWithBoundingBoxes, 0.0f, 0.0f, null)
 
-        if (highlight != null) {
-            canvas.drawPath(highlight!!, highlightPaint)
+            val overlay = Bitmap.createBitmap(
+                imageWithBoundingBoxes.width,
+                imageWithBoundingBoxes.height,
+                Bitmap.Config.ARGB_8888
+            )
+            val overlayCanvas = Canvas(overlay)
+
+            overlayCanvas.drawRect(
+                0.0f,
+                0.0f,
+                1.0f * (imageWithBoundingBoxes.width - 1),
+                1.0f * (imageWithBoundingBoxes.height - 1),
+                backdropPaint
+            )
+            overlayCanvas.drawPath(highlight!!, highlightPaint)
+
+            canvas.drawBitmap(overlay, 0.0f, 0.0f, null)
         }
     }
 
